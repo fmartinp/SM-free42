@@ -29,6 +29,7 @@
 #include "shell.h"
 #include "shell_spool.h"
 
+
 /********************/
 /* HP-42S font data */
 /********************/
@@ -917,7 +918,6 @@ const unsigned char *get_char(char c) {
     return bigchars[uc];
 }
 
-
 void draw_string(int x, int y, const char *s, int length) {
     while (length != 0 && x < 22) {
         draw_char(x++, y, *s++);
@@ -1306,12 +1306,21 @@ void display_incomplete_command(int row) {
 
 void display_error(int error, bool print) {
     clear_row(0);
-    draw_string(0, 0, errors[error].text, errors[error].length);
+    int err_len;
+    const char *err_text;
+    if (error == -1) {
+        err_len = lasterr_length;
+        err_text = lasterr_text;
+    } else {
+        err_len = errors[error].length;
+        err_text = errors[error].text;
+    }
+    draw_string(0, 0, err_text, err_len);
     flags.f.message = 1;
     flags.f.two_line_message = 0;
     if (print && (flags.f.trace_print || flags.f.normal_print)
             && flags.f.printer_exists)
-        print_text(errors[error].text, errors[error].length, 1);
+        print_text(err_text, err_len, 1);
 }
 
 void display_command(int row) {
@@ -1554,10 +1563,10 @@ static int ext_stk_cat[] = {
 };
 
 static int ext_prgm_cat[] = {
-    CMD_FUNC,    CMD_LASTO,   CMD_LSTO,    CMD_RTNERR,  CMD_RTNNO,   CMD_RTNYES,
-    CMD_X_EQ_NN, CMD_X_NE_NN, CMD_X_LT_NN, CMD_X_GT_NN, CMD_X_LE_NN, CMD_X_GE_NN,
     CMD_0_EQ_NN, CMD_0_NE_NN, CMD_0_LT_NN, CMD_0_GT_NN, CMD_0_LE_NN, CMD_0_GE_NN,
-    CMD_SST_UP,  CMD_SST_RT,  CMD_NULL,    CMD_NULL,    CMD_NULL,    CMD_NULL
+    CMD_X_EQ_NN, CMD_X_NE_NN, CMD_X_LT_NN, CMD_X_GT_NN, CMD_X_LE_NN, CMD_X_GE_NN,
+    CMD_ERRMSG,  CMD_ERRNO,   CMD_FUNC,    CMD_LASTO,   CMD_LSTO,    CMD_RTNERR,
+    CMD_RTNNO,   CMD_RTNYES,  CMD_SST_UP,  CMD_SST_RT,  CMD_NULL,    CMD_NULL
 };
 
 #if defined(ANDROID) || defined(IPHONE)

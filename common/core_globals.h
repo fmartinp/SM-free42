@@ -18,6 +18,7 @@
 #ifndef CORE_GLOBALS_H
 #define CORE_GLOBALS_H 1
 
+
 #include <stdio.h>
 
 #include "free42.h"
@@ -74,6 +75,8 @@ extern FILE *gfile;
 #define ERR_BIG_STACK_DISABLED     36
 #define ERR_INVALID_CONTEXT        37
 #define ERR_NAME_TOO_LONG          38
+
+#define RTNERR_MAX 8
 
 struct error_spec {
     const char *text;
@@ -471,6 +474,11 @@ extern int matedit_prev_appmenu;
 extern char input_name[11];
 extern int input_length;
 extern arg_struct input_arg;
+
+/* ERRMSG/ERRNO */
+extern int lasterr;
+extern int lasterr_length;
+extern char lasterr_text[22];
 
 /* BASE application */
 extern int baseapp;

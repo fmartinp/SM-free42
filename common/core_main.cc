@@ -887,7 +887,6 @@ static void raw_close(const char *mode) {
 
 #endif
 
-
 static void export_hp42s(int index) {
     int4 pc = 0;
     int cmd;
@@ -4204,11 +4203,13 @@ void do_interactive(int command) {
         return;
     }
     if (command == CMD_GOTOROW) {
-        err = docmd_stoel(NULL);
-        if (err != ERR_NONE) {
-            display_error(err, true);
-            redisplay();
-            return;
+        if (sp != -1) {
+            err = docmd_stoel(NULL);
+            if (err != ERR_NONE) {
+                display_error(err, true);
+                redisplay();
+                return;
+            }
         }
     } else if (command == CMD_A_THRU_F) {
         set_base(16);
@@ -4521,7 +4522,7 @@ void start_incomplete_command(int cmd_id) {
     else if (argtype == ARG_MKEY)
         set_menu(MENULEVEL_COMMAND, MENU_BLANK);
     else if (argtype == ARG_VAR) {
-        if (mode_alphamenu != MENU_NONE)
+        if (mode_alphamenu != MENU_NONE || mode_plainmenu != MENU_NONE)
             set_catalog_menu(CATSECT_VARS_ONLY);
         else if (mode_appmenu == MENU_VARMENU)
             mode_commandmenu = MENU_VARMENU;
@@ -4532,7 +4533,9 @@ void start_incomplete_command(int cmd_id) {
     } else if (argtype == ARG_NAMED)
         set_catalog_menu(CATSECT_VARS_ONLY);
     else if (argtype == ARG_REAL) {
-        if (mode_appmenu == MENU_VARMENU)
+        if (mode_alphamenu != MENU_NONE || mode_plainmenu != MENU_NONE)
+            set_catalog_menu(CATSECT_REAL_ONLY);
+        else if (mode_appmenu == MENU_VARMENU)
             mode_commandmenu = MENU_VARMENU;
         else if (mode_appmenu == MENU_INTEG_PARAMS)
             mode_commandmenu = MENU_INTEG_PARAMS;
@@ -4739,6 +4742,15 @@ void set_old_pc(int4 pc) {
     oldpc = pc;
 }
 
+static void set_last_err(int error) {
+    if (error <= RTNERR_MAX) {
+        lasterr = error;
+    } else {
+        lasterr = -1;
+        string_copy(lasterr_text, &lasterr_length, errors[error].text, errors[error].length);
+    }
+}
+
 static int handle_error(int error) {
     if (mode_running) {
         if (error == ERR_RUN)
@@ -4762,6 +4774,7 @@ static int handle_error(int error) {
         } else if (error != ERR_NONE && error != ERR_YES) {
             if (flags.f.error_ignore && error != ERR_SUSPICIOUS_OFF) {
                 flags.f.error_ignore = 0;
+                set_last_err(error);
                 return 1;
             }
             if (solve_active() && (error == ERR_OUT_OF_RANGE
@@ -4805,6 +4818,7 @@ static int handle_error(int error) {
         } else {
             if (flags.f.error_ignore) {
                 flags.f.error_ignore = 0;
+                set_last_err(error);
                 goto noerr;
             }
             if (solve_active() && (error == ERR_OUT_OF_RANGE
@@ -4831,6 +4845,7 @@ static int handle_error(int error) {
             flags.f.stack_lift_disable = mode_disable_stack_lift;
         else if (flags.f.error_ignore) {
             flags.f.error_ignore = 0;
+            set_last_err(error);
             error = ERR_NONE;
         }
         if (error != ERR_NONE && error != ERR_STOP)

@@ -45,7 +45,7 @@ void* unguarded_realloc(void *ptr, size_t size, const char* file, int line) {
 
 #endif
 
-int resolve_ind_arg(arg_struct *arg) {
+int resolve_ind_arg(arg_struct *arg, char *buf, int *buflen) {
     vartype *v;
     switch (arg->type) {
         case ARGTYPE_IND_NUM: {
@@ -75,11 +75,17 @@ int resolve_ind_arg(arg_struct *arg) {
                     get_matrix_string(rm, num, &text, &len);
                     if (len == 0)
                         return ERR_RESTRICTED_OPERATION;
-                    if (len > 7)
-                        return ERR_NAME_TOO_LONG;
+                    if (buf == NULL) {
+                        if (len > 7)
+                            return ERR_NAME_TOO_LONG;
+                        arg->length = len;
+                        memcpy(arg->val.text, text, len);
+                    } else {
+                        if (len < *buflen)
+                            *buflen = len;
+                        memcpy(buf, text, *buflen);
+                    }
                     arg->type = ARGTYPE_STR;
-                    arg->length = len;
-                    memcpy(arg->val.text, text, len);
                 }
                 return ERR_NONE;
             }
@@ -121,11 +127,17 @@ int resolve_ind_arg(arg_struct *arg) {
                 vartype_string *s = (vartype_string *) v;
                 if (s->length == 0)
                     return ERR_RESTRICTED_OPERATION;
-                if (s->length > 7)
-                    return ERR_NAME_TOO_LONG;
+                if (buf == NULL) {
+                    if (s->length > 7)
+                        return ERR_NAME_TOO_LONG;
+                    arg->length = s->length;
+                    memcpy(arg->val.text, s->txt(), s->length);
+                } else {
+                    if (s->length < *buflen)
+                        *buflen = s->length;
+                    memcpy(buf, s->txt(), *buflen);
+                }
                 arg->type = ARGTYPE_STR;
-                arg->length = s->length;
-                memcpy(arg->val.text, s->txt(), s->length);
                 return ERR_NONE;
             } else
                 return ERR_INVALID_TYPE;

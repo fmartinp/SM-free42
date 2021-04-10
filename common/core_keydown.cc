@@ -1967,7 +1967,6 @@ void keydown_alpha_mode(int shift, int key) {
         do_interactive(command);
 }
 
-
 void keydown_normal_mode(int shift, int key) {
     int command;
 
@@ -2035,8 +2034,7 @@ void keydown_normal_mode(int shift, int key) {
                 || mode_plainmenu != MENU_NONE
                 || mode_transientmenu != MENU_NONE)
             && mode_alphamenu == MENU_NONE
-            && mode_commandmenu == MENU_NONE)
-    {
+            && mode_commandmenu == MENU_NONE) {
         int menukey = find_menu_key(key);
         int menu, level;
         if (mode_transientmenu != MENU_NONE) {

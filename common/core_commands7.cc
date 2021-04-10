@@ -878,6 +878,28 @@ int docmd_func(arg_struct *arg) {
     return push_func_state(arg->val.num);
 }
 
+int docmd_errmsg(arg_struct *arg) {
+    vartype *v;
+    if (lasterr != -1)
+        v = new_string(errors[lasterr].text, errors[lasterr].length);
+    else
+        v = new_string(lasterr_text, lasterr_length);
+    if (v == NULL)
+        return ERR_INSUFFICIENT_MEMORY;
+    return recall_result(v);
+}
+
+int docmd_errno(arg_struct *arg) {
+    vartype *v;
+    if (lasterr != -1)
+        v = new_real(lasterr);
+    else
+        v = new_string(lasterr_text, lasterr_length);
+    if (v == NULL)
+        return ERR_INSUFFICIENT_MEMORY;
+    return recall_result(v);
+}
+
 int docmd_rtnyes(arg_struct *arg) {
     if (!program_running())
         return ERR_RESTRICTED_OPERATION;
@@ -900,18 +922,31 @@ int docmd_rtnerr(arg_struct *arg) {
     if (!program_running())
         return ERR_RESTRICTED_OPERATION;
     int err;
-    int4 e;
-    err = arg_to_num(arg, &e);
-    if (err != ERR_NONE)
-        return err;
-    if (e >= ERR_SIZE_ERROR)
-        return ERR_INVALID_DATA;
-    err = pop_func_state(true);
-    if (err != ERR_NONE)
-        return err;
-    err = to_int(e);
+    int len;
+    if (arg->type == ARGTYPE_IND_NUM
+            || arg->type == ARGTYPE_IND_STK
+            || arg->type == ARGTYPE_IND_STR) {
+        len = 22;
+        err = resolve_ind_arg(arg, lasterr_text, &len);
+        if (err != ERR_NONE)
+            return err;
+    }
+    if (arg->type == ARGTYPE_STR) {
+        lasterr_length = len;
+        err = -1;
+    } else if (arg->type == ARGTYPE_NUM) {
+        err = arg->val.num;
+        if (err > RTNERR_MAX)
+            return ERR_INVALID_DATA;
+    } else {
+        return ERR_INTERNAL_ERROR;
+    }
+    int err2 = pop_func_state(true);
+    if (err2 != ERR_NONE)
+        return err2;
     if (err != ERR_NONE && flags.f.error_ignore) {
         flags.f.error_ignore = 0;
+        lasterr = err;
         err = ERR_NONE;
     }
     if (err != ERR_NONE)
@@ -1021,7 +1056,7 @@ int docmd_dropn(arg_struct *arg) {
     if (flags.f.big_stack) {
         sp -= n;
     } else {
-        memmove(stack + n, stack, (n - 4) * sizeof(vartype *));
+        memmove(stack + n, stack, (4 - n) * sizeof(vartype *));
         for (int i = 0; i < n; i++)
             stack[i] = new_real(0);
     }
@@ -1151,15 +1186,13 @@ int docmd_rdnn(arg_struct *arg) {
     int err = arg_to_num(arg, &n);
     if (err != ERR_NONE)
         return err;
-    if (n < 2)
-        goto done;
     if (n > sp + 1)
         return ERR_SIZE_ERROR;
-    vartype *v;
-    v = stack[sp];
-    memmove(stack + sp - n + 2, stack + sp - n + 1, (n - 1) * sizeof(vartype *));
-    stack[sp - n + 1] = v;
-    done:
+    if (n > 1) {
+        vartype *v = stack[sp];
+        memmove(stack + sp - n + 2, stack + sp - n + 1, (n - 1) * sizeof(vartype *));
+        stack[sp - n + 1] = v;
+    }
     print_trace();
     return ERR_NONE;
 }
@@ -1171,15 +1204,13 @@ int docmd_rupn(arg_struct *arg) {
     int err = arg_to_num(arg, &n);
     if (err != ERR_NONE)
         return err;
-    if (n < 2)
-        goto done;
     if (n > sp + 1)
         return ERR_SIZE_ERROR;
-    vartype *v;
-    v = stack[sp - n + 1];
-    memmove(stack + sp - n + 1, stack + sp - n + 2, (n - 1) * sizeof(vartype *));
-    stack[sp] = v;
-    done:
+    if (n > 1) {
+        vartype *v = stack[sp - n + 1];
+        memmove(stack + sp - n + 1, stack + sp - n + 2, (n - 1) * sizeof(vartype *));
+        stack[sp] = v;
+    }
     print_trace();
     return ERR_NONE;
 }
@@ -1195,7 +1226,6 @@ int docmd_pgmmenu(arg_struct *arg) {
     if (err == ERR_NONE) {
         set_cat_section(CATSECT_PGM_MENU);
         move_cat_row(0);
-        clear_row(0);
     }
     return err;
 }
@@ -1275,6 +1305,17 @@ int docmd_prmvar(arg_struct *arg) {
 ///// Generalized Comparisons //////
 ////////////////////////////////////
 
+static int recall_v_real(arg_struct *arg, vartype **v) {
+    int err = generic_rcl(arg, v);
+    if (err != ERR_NONE)
+        return err;
+    if ((*v)->type == TYPE_STRING)
+        return ERR_ALPHA_DATA_IS_INVALID;
+    if ((*v)->type != TYPE_REAL)
+        return ERR_INVALID_TYPE;
+    return ERR_NONE;
+}
+
 int docmd_x_eq_nn(arg_struct *arg) {
     vartype *v;
     int err = generic_rcl(arg, &v);
@@ -1293,120 +1334,80 @@ int docmd_x_ne_nn(arg_struct *arg) {
 
 int docmd_x_lt_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) stack[sp])->x < ((vartype_real *) v)->x ? ERR_YES : ERR_NO;
 }
 
 int docmd_x_gt_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) stack[sp])->x > ((vartype_real *) v)->x ? ERR_YES : ERR_NO;
 }
 
 int docmd_x_le_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) stack[sp])->x <= ((vartype_real *) v)->x ? ERR_YES : ERR_NO;
 }
 
 int docmd_x_ge_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) stack[sp])->x >= ((vartype_real *) v)->x ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_eq_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x == 0 ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_ne_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x != 0 ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_lt_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x > 0 ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_gt_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x < 0 ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_le_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x >= 0 ? ERR_YES : ERR_NO;
 }
 
 int docmd_0_ge_nn(arg_struct *arg) {
     vartype *v;
-    int err = generic_rcl(arg, &v);
+    int err = recall_v_real(arg, &v);
     if (err != ERR_NONE)
         return err;
-    if (v->type == TYPE_STRING)
-        return ERR_ALPHA_DATA_IS_INVALID;
-    if (v->type != TYPE_REAL)
-        return ERR_INVALID_TYPE;
     return ((vartype_real *) v)->x <= 0 ? ERR_YES : ERR_NO;
 }

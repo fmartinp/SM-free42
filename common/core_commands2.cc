@@ -59,6 +59,13 @@ int docmd_sf(arg_struct *arg) {
              * this to actually have the intended effect.
              */
             mode_disable_stack_lift = true;
+        else if (num == 25)
+            /* This is the error ignore flag.
+             * When flag 25 is cleared due to an error occurring, 'lasterr'
+             * is set to the error number. This is to make sure we start
+             * with a known, sane value.
+             */
+            lasterr = ERR_NONE;
         return ERR_NONE;
     }
 }
@@ -170,6 +177,8 @@ int docmd_comb(arg_struct *arg) {
         x = y - x;
     #ifdef BCD_MATH
         s = x == 0 ? 1 : pow(10, 1 + floor(log10(x)));
+    #elif ANDROID
+        s = x == 0 ? 1 : pow(2, 1 + floor(log(x) / log(2)));
     #else
         s = x == 0 ? 1 : pow(2, 1 + floor(log2(x)));
     #endif
